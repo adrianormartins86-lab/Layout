@@ -2,162 +2,128 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# Configuração inicial da página
-st.set_page_config(page_title="Gerador de Planograma 2.0", layout="wide", page_icon="🛒")
+# Configuração inicial
+st.set_page_config(page_title="Planograma por Categoria", layout="wide", page_icon="🛒")
 
-st.title("🛒 Gerenciador de Categorias & Planograma")
-st.write("Insira os dados físicos do módulo e dos produtos. O sistema calculará o espaço ideal baseado nas vendas.")
-
-# ==========================================
-# 1. BARRA LATERAL (Configurações Físicas do Módulo)
-# ==========================================
-st.sidebar.header("1. Estrutura do Módulo")
-
-# Selectbox para larguras padrões de mercado
-largura_modulo_m = st.sidebar.selectbox(
-    "Largura do Módulo (Metros)", 
-    options=[0.8, 1.0, 1.2, 1.33], 
-    index=1 # Default 1.0m
-)
-
-# Profundidade da prateleira (útil para cálculos futuros de estoque/profundidade)
-profundidade_modulo_cm = st.sidebar.number_input("Profundidade da Régua (cm)", min_value=20, max_value=100, value=50, step=5)
-
-# Quantidade de réguas no módulo
-qtd_prateleiras = st.sidebar.number_input("Quantidade de Réguas", min_value=1, max_value=12, value=5)
-
-st.sidebar.markdown("---")
-st.sidebar.header("Ajuste Visual")
-altura_visual = st.sidebar.slider("Altura do Desenho (pixels)", min_value=400, max_value=1000, value=500, step=50)
+st.title("🛒 Planograma Inteligente por Categoria")
+st.write("Selecione a categoria. Os produtos serão ranqueados pelo maior preço e alocados fisicamente nas réguas.")
 
 # ==========================================
-# 2. BANCO DE PRODUTOS E VENDAS
+# 1. BANCO DE DADOS (Simulando um ERP)
 # ==========================================
-st.subheader("2. Banco de Produtos, Dimensões e Vendas")
-
-# Inicializa os dados padrão na primeira vez que o app roda
-if 'df_produtos' not in st.session_state:
-    st.session_state.df_produtos = pd.DataFrame({
-        "EAN": ["7891000001", "7891000002", "7891000003"],
-        "Produto/Marca": ["Leite Integral 1L", "Leite Desnatado 1L", "Bebida Láctea 1L"],
-        "Largura (cm)": [7.0, 7.0, 6.5],
-        "Altura (cm)": [16.0, 16.0, 15.0],
-        "Profundidade (cm)": [7.0, 7.0, 6.5],
-        "Vendas (R$)": [15000.0, 5000.0, 2500.0],
-        "Cor": ["#e63946", "#1d3557", "#2a9d8f"]
+# Aqui você pode no futuro conectar com o seu banco SQL ou importar um CSV
+if 'df_bd' not in st.session_state:
+    st.session_state.df_bd = pd.DataFrame({
+        "Categoria": ["Sucos", "Sucos", "Sucos", "Sucos", "Sucos", "Laticínios", "Laticínios"],
+        "EAN": ["78901", "78902", "78903", "78904", "78905", "78906", "78907"],
+        "Produto": ["Suco Integral Uva 1.5L", "Suco Laranja 1L", "Suco Maçã 1L", "Néctar Pêssego 1L", "Suco Caixinha 200ml", "Leite A", "Queijo B"],
+        "Preço (R$)": [22.90, 14.50, 15.00, 7.50, 2.50, 5.00, 45.00], # Usado para ordenação (Cima para Baixo)
+        "Vendas (R$)": [8000.0, 5000.0, 3000.0, 6000.0, 2000.0, 15000.0, 3000.0], # Usado para definir o % de Espaço
+        "Largura (cm)": [10.0, 8.5, 8.5, 7.0, 5.0, 7.0, 15.0],
+        "Cor": ["#5c3a21", "#e67e22", "#e74c3c", "#f1c40f", "#f39c12", "#ecf0f1", "#f1c40f"]
     })
 
-st.info("💡 Edite a tabela abaixo. O **Share Ideal** e a quantidade de **Frentes** serão calculados automaticamente!")
+# ==========================================
+# 2. BARRA LATERAL E FILTROS
+# ==========================================
+st.sidebar.header("Configurações do Módulo")
 
-# Tabela editável para o usuário
-df_editado = st.data_editor(
-    st.session_state.df_produtos,
-    num_rows="dynamic",
-    use_container_width=True,
-    column_config={
-        "EAN": st.column_config.TextColumn("Cód. Barras", required=True),
-        "Produto/Marca": st.column_config.TextColumn("Nome do Produto", required=True),
-        "Largura (cm)": st.column_config.NumberColumn("Largura (cm)", min_value=0.1, format="%.1f"),
-        "Altura (cm)": st.column_config.NumberColumn("Altura (cm)", min_value=0.1, format="%.1f"),
-        "Profundidade (cm)": st.column_config.NumberColumn("Profundidade (cm)", min_value=0.1, format="%.1f"),
-        "Vendas (R$)": st.column_config.NumberColumn("Vendas / Demanda", min_value=0.0, format="R$ %.2f"),
-        "Cor": st.column_config.TextColumn("Cor Visual (Hex)", required=True)
-    }
-)
+# Filtro de Categoria
+categorias_disponiveis = st.session_state.df_bd["Categoria"].unique()
+categoria_selecionada = st.sidebar.selectbox("Filtrar Categoria:", categorias_disponiveis)
 
-# Salva o estado atualizado
-st.session_state.df_produtos = df_editado
+st.sidebar.markdown("---")
+largura_modulo_m = st.sidebar.selectbox("Largura do Módulo (m)", options=[0.8, 1.0, 1.2, 1.33], index=1)
+qtd_prateleiras = st.sidebar.number_input("Quantidade de Réguas", min_value=1, max_value=12, value=5)
+altura_visual = st.sidebar.slider("Altura do Desenho (pixels)", min_value=400, max_value=1200, value=600, step=50)
 
 # ==========================================
-# 3. MOTOR DE CÁLCULO (Share e Frentes Físicas)
+# 3. MOTOR DE CÁLCULO E ALOCAÇÃO
 # ==========================================
-# Converte a largura do módulo para centímetros
 largura_modulo_cm = largura_modulo_m * 100
+espaco_total_modulo_cm = largura_modulo_cm * qtd_prateleiras
 
-# Calcula o Total de Vendas
-total_vendas = df_editado["Vendas (R$)"].sum()
+# Filtra a categoria e ordena pelo PREÇO (Maior para o Menor)
+df_filtrado = st.session_state.df_bd[st.session_state.df_bd["Categoria"] == categoria_selecionada].copy()
+df_filtrado = df_filtrado.sort_values(by="Preço (R$)", ascending=False)
 
-# Cria um dataframe de resultados baseado nos cálculos
-df_resultados = df_editado.copy()
+total_vendas_cat = df_filtrado["Vendas (R$)"].sum()
 
-if total_vendas > 0:
-    # 1. Calcula o Share de Vendas (%)
-    df_resultados["Share (%)"] = (df_resultados["Vendas (R$)"] / total_vendas) * 100
+if total_vendas_cat > 0:
+    # Calcula Share e Frentes
+    df_filtrado["Share (%)"] = (df_filtrado["Vendas (R$)"] / total_vendas_cat) * 100
+    df_filtrado["Espaço Recomendado (cm)"] = (df_filtrado["Share (%)"] / 100) * espaco_total_modulo_cm
     
-    # 2. Calcula o espaço linear que esse produto merece na régua (em cm)
-    df_resultados["Espaço Linear Recomendado (cm)"] = largura_modulo_cm * (df_resultados["Share (%)"] / 100)
+    # Arredonda para baixo para ter o número exato de frentes físicas que cabem
+    df_filtrado["Frentes"] = np.floor(df_filtrado["Espaço Recomendado (cm)"] / df_filtrado["Largura (cm)"]).astype(int)
     
-    # 3. Calcula quantas frentes (faces) físicas cabem nesse espaço
-    # Se a largura do produto for > 0, divide o espaço recomendado pela largura do produto
-    df_resultados["Frentes (Calculadas)"] = np.where(
-        df_resultados["Largura (cm)"] > 0,
-        df_resultados["Espaço Linear Recomendado (cm)"] / df_resultados["Largura (cm)"],
-        0
+    # Garante no mínimo 1 frente se o produto tem venda
+    df_filtrado["Frentes"] = np.where((df_filtrado["Frentes"] == 0) & (df_filtrado["Vendas (R$)"] > 0), 1, df_filtrado["Frentes"])
+
+    # --- O ALGORITMO DE PRATELEIRAS (Quebra Automática) ---
+    # Cria uma lista de dicionários para representar o espaço físico de cada régua
+    prateleiras = [{"espaco_livre_cm": largura_modulo_cm, "itens_alocados": []} for _ in range(int(qtd_prateleiras))]
+    
+    indice_prateleira_atual = 0
+
+    # Pega cada produto (já ordenado do mais caro pro mais barato)
+    for idx, row in df_filtrado.iterrows():
+        qtd_frentes = row["Frentes"]
+        largura_item = row["Largura (cm)"]
+        
+        # Tenta colocar frente por frente na gôndola
+        for _ in range(qtd_frentes):
+            if indice_prateleira_atual >= qtd_prateleiras:
+                break # Acabou o espaço do módulo inteiro
+                
+            # Se a frente couber na prateleira atual, coloca ela
+            if prateleiras[indice_prateleira_atual]["espaco_livre_cm"] >= largura_item:
+                prateleiras[indice_prateleira_atual]["itens_alocados"].append(row)
+                prateleiras[indice_prateleira_atual]["espaco_livre_cm"] -= largura_item
+            else:
+                # Se não couber, pula para a prateleira de baixo
+                indice_prateleira_atual += 1
+                if indice_prateleira_atual < qtd_prateleiras:
+                    if prateleiras[indice_prateleira_atual]["espaco_livre_cm"] >= largura_item:
+                        prateleiras[indice_prateleira_atual]["itens_alocados"].append(row)
+                        prateleiras[indice_prateleira_atual]["espaco_livre_cm"] -= largura_item
+
+    # ==========================================
+    # 4. VISUALIZAÇÃO DOS DADOS E DESENHO
+    # ==========================================
+    st.subheader(f"📊 Espaço Recomendado - {categoria_selecionada}")
+    st.dataframe(
+        df_filtrado[["Produto", "Preço (R$)", "Vendas (R$)", "Share (%)", "Frentes"]],
+        use_container_width=True, hide_index=True,
+        column_config={
+            "Share (%)": st.column_config.ProgressColumn("Share Ideal", format="%.1f%%", min_value=0, max_value=100),
+        }
     )
+
+    st.markdown("---")
+    st.subheader("🎨 Planograma Físico (Ordem de Preço Descrescente)")
     
-    # Arredonda para 1 casa decimal para visualização
-    df_resultados["Frentes (Calculadas)"] = df_resultados["Frentes (Calculadas)"].round(1)
-
-else:
-    df_resultados["Share (%)"] = 0
-    df_resultados["Espaço Linear Recomendado (cm)"] = 0
-    df_resultados["Frentes (Calculadas)"] = 0
-
-# Exibe o resumo dos cálculos em um mini-dashboard
-st.markdown("---")
-st.subheader("📊 Resultados do Cálculo de Espaço")
-
-col1, col2, col3 = st.columns(3)
-col1.metric("Largura do Módulo", f"{largura_modulo_cm} cm")
-col2.metric("Total de Vendas", f"R$ {total_vendas:,.2f}")
-col3.metric("Espaço Linear Total", f"{largura_modulo_cm * qtd_prateleiras} cm")
-
-# Mostra apenas as colunas de resultado
-st.dataframe(
-    df_resultados[["Produto/Marca", "Vendas (R$)", "Share (%)", "Espaço Linear Recomendado (cm)", "Frentes (Calculadas)"]],
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "Share (%)": st.column_config.ProgressColumn("Share Ideal", format="%.1f%%", min_value=0, max_value=100),
-        "Frentes (Calculadas)": st.column_config.NumberColumn("Frentes Sugeridas", format="%.1f")
-    }
-)
-
-
-# ==========================================
-# 4. MOTOR DE DESENHO (Visualização Visual)
-# ==========================================
-st.markdown("---")
-st.subheader("🎨 Visualização do Planograma")
-
-if total_vendas == 0:
-    st.warning("⚠️ Adicione vendas maiores que 0 aos produtos para gerar o planograma.")
-else:
-    # A altura de cada prateleira é dividida igualmente
     altura_prateleira = 100 / qtd_prateleiras
     
-    # Inicia a construção do HTML/CSS da Gôndola
+    # Base da Gôndola
     html_gondola = f"""
     <div style="
-        border: 5px solid #2c3e50; 
+        border: 4px solid #34495e; 
         border-bottom: 12px solid #2c3e50; 
         width: 100%; 
         max-width: 1000px; 
         height: {altura_visual}px;
         display: flex; 
         flex-direction: column; 
-        background: #ecf0f1; 
+        background: #f8f9fa; 
         box-sizing: border-box; 
-        box-shadow: inset 0 0 10px rgba(0,0,0,0.1);
         margin: 0 auto;
-        border-radius: 4px;
     ">
     """
     
-    # Loop para desenhar cada prateleira (Blocagem Vertical)
-    for i in range(int(qtd_prateleiras)):
-        # Adiciona a borda inferior para simular a prateleira
-        border_bottom = "border-bottom: 8px solid #7f8c8d;" if i < int(qtd_prateleiras) - 1 else ""
+    # Desenha as prateleiras e as frentes reais que foram calculadas no algoritmo
+    for i, prat in enumerate(prateleiras):
+        border_bottom = "border-bottom: 6px solid #95a5a6;" if i < qtd_prateleiras - 1 else ""
         
         html_gondola += f"""
         <div style="
@@ -166,47 +132,45 @@ else:
             width: 100%; 
             height: {altura_prateleira}%;
             box-sizing: border-box;
+            align-items: flex-end; /* Produtos encostados na base da prateleira */
+            padding-left: 2px;
         ">
         """
         
-        # Desenha os produtos com base no Share Calculado
-        for index, row in df_resultados.iterrows():
-            share_atual = row["Share (%)"]
-            frentes = row["Frentes (Calculadas)"]
+        for item in prat["itens_alocados"]:
+            # A largura percentual visual no HTML é baseada na largura do módulo
+            width_pct = (item["Largura (cm)"] / largura_modulo_cm) * 100
+            cor = item["Cor"]
+            nome = item["Produto"].split()[0] # Pega só o primeiro nome pra caber na caixinha
+            preco = f"R${item['Preço (R$)']:.2f}"
             
-            if pd.notna(share_atual) and share_atual > 0:
-                width_pct = share_atual
-                cor = row['Cor'] if pd.notna(row['Cor']) else "#cccccc"
-                nome = row['Produto/Marca'] if pd.notna(row['Produto/Marca']) else "Item"
-                
-                html_gondola += f"""
-                <div style="
-                    display: flex; 
-                    flex-direction: column;
-                    align-items: center; 
-                    justify-content: center; 
-                    background-color: {cor}; 
-                    width: {width_pct}%; 
-                    color: white; 
-                    font-weight: bold; 
-                    font-size: 14px;
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    text-shadow: 1px 1px 3px rgba(0,0,0,0.8); 
-                    overflow: hidden; 
-                    white-space: nowrap; 
-                    box-sizing: border-box;
-                    border-right: 1px solid rgba(255,255,255,0.3);
-                    box-shadow: inset 0 -10px 10px rgba(0,0,0,0.1);
-                ">
-                    <span>{nome}</span>
-                    <span style="font-size: 12px; font-weight: normal; margin-top: 4px;">{frentes} Frentes</span>
-                </div>
-                """
-        # Fecha a div da prateleira
-        html_gondola += "</div>" 
-        
-    # Fecha a div da gôndola inteira
-    html_gondola += "</div>" 
+            html_gondola += f"""
+            <div style="
+                background-color: {cor}; 
+                width: {width_pct}%; 
+                height: 80%; /* Altura simulada do produto */
+                color: white; 
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                font-family: Arial, sans-serif;
+                font-size: 11px;
+                font-weight: bold;
+                border: 1px solid rgba(0,0,0,0.2);
+                border-radius: 2px 2px 0 0;
+                box-sizing: border-box;
+                text-align: center;
+                overflow: hidden;
+            ">
+                <span>{nome}</span>
+                <span style="font-size: 9px;">{preco}</span>
+            </div>
+            """
+        html_gondola += "</div>"
     
-    # Renderiza o HTML dentro do Streamlit
+    html_gondola += "</div>"
     st.components.v1.html(html_gondola, height=altura_visual + 20)
+
+else:
+    st.warning("Nenhum dado de venda encontrado para esta categoria.")
